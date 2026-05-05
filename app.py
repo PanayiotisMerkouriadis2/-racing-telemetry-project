@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("🏎️ Racing Telemetry Analytics Platform")
-st.caption("Cloud-based motorsport analytics powered by AWS S3")
+st.caption("Cloud-based motorsport telemetry system powered by AWS S3")
 
 # =====================================================
 # AWS CONNECTION (STREAMLIT SECRETS)
@@ -46,18 +46,19 @@ def load_data():
 df = load_data()
 
 # =====================================================
-# CLEANING (SAFE)
+# CLEANING
 # =====================================================
 
 required_cols = ["rpm", "throttle", "brake", "lapNum"]
 
 for col in required_cols:
-    if col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df[col] = pd.to_numeric(df[col], errors="coerce")
 
-df = df.dropna(subset=["rpm", "throttle", "brake", "lapNum"])
+df = df.dropna(subset=required_cols)
 
-df["rpm_norm"] = df["rpm"] / df["rpm"].max()
+# Prevent divide-by-zero crash
+rpm_max = df["rpm"].max()
+df["rpm_norm"] = df["rpm"] / rpm_max if rpm_max != 0 else 0
 
 # =====================================================
 # SIDEBAR STATUS
@@ -74,7 +75,11 @@ st.sidebar.success("✔ Dashboard Running")
 
 lap_list = sorted(df["lapNum"].unique())
 
-selected_lap = st.selectbox("Select Lap", lap_list)
+selected_lap = st.selectbox(
+    "Select Lap",
+    lap_list,
+    key="lap_select_main"
+)
 
 lap_data = df[df["lapNum"] == selected_lap].reset_index(drop=True)
 
@@ -96,34 +101,39 @@ with col3:
     st.line_chart(lap_data["brake"])
 
 # =====================================================
-# LAP COMPARISON
+# LAP COMPARISON (SAFE VERSION)
 # =====================================================
 
 st.subheader("🔁 Lap Comparison")
 
-lap1 = st.selectbox("Lap 1", lap_list, index=0)
-lap2 = st.selectbox("Lap 2", lap_list, index=1)
+if len(lap_list) >= 2:
 
-l1 = df[df["lapNum"] == lap1].reset_index(drop=True)
-l2 = df[df["lapNum"] == lap2].reset_index(drop=True)
+    lap1 = st.selectbox("Lap 1", lap_list, index=0, key="lap1")
+    lap2 = st.selectbox("Lap 2", lap_list, index=1, key="lap2")
 
-st.write("RPM Comparison")
-st.line_chart({
-    f"Lap {lap1}": l1["rpm_norm"],
-    f"Lap {lap2}": l2["rpm_norm"]
-})
+    l1 = df[df["lapNum"] == lap1].reset_index(drop=True)
+    l2 = df[df["lapNum"] == lap2].reset_index(drop=True)
 
-st.write("Throttle Comparison")
-st.line_chart({
-    f"Lap {lap1}": l1["throttle"],
-    f"Lap {lap2}": l2["throttle"]
-})
+    st.write("RPM Comparison")
+    st.line_chart({
+        f"Lap {lap1}": l1["rpm_norm"],
+        f"Lap {lap2}": l2["rpm_norm"]
+    })
 
-st.write("Brake Comparison")
-st.line_chart({
-    f"Lap {lap1}": l1["brake"],
-    f"Lap {lap2}": l2["brake"]
-})
+    st.write("Throttle Comparison")
+    st.line_chart({
+        f"Lap {lap1}": l1["throttle"],
+        f"Lap {lap2}": l2["throttle"]
+    })
+
+    st.write("Brake Comparison")
+    st.line_chart({
+        f"Lap {lap1}": l1["brake"],
+        f"Lap {lap2}": l2["brake"]
+    })
+
+else:
+    st.info("Not enough laps for comparison.")
 
 # =====================================================
 # RACE ENGINEER INSIGHTS
