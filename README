@@ -1,0 +1,158 @@
+🏎️ Racing Telemetry Analytics Platform
+
+A cloud-based motorsport telemetry analytics system built with Python and AWS.
+It processes racing data stored in S3 and provides an interactive dashboard for lap analysis, driver behaviour insights, and performance comparison.
+
+⸻
+
+🚀 Project Overview
+
+This project ingests and analyses telemetry data from an AMG GT3 at Brands Hatch, focusing on:
+
+* Lap-by-lap performance comparison
+* Driver input analysis (throttle, brake, RPM)
+* Performance scoring system
+* Best vs worst lap detection
+* Interactive visualisation dashboard
+
+The goal is to simulate a simplified race engineering telemetry system.
+
+⸻
+
+☁️ Cloud Architecture
+
+Data is stored in:
+
+* Amazon Web Services S3
+
+Pipeline flow:
+
+1. Load telemetry CSV from S3
+2. Clean and validate dataset
+3. Aggregate by lap
+4. Compute performance metrics
+5. Visualise results in Streamlit dashboard
+
+⸻
+
+🧠 Key Features
+
+* AWS S3 data ingestion
+* Multi-lap telemetry analysis
+* Driver performance scoring model
+* Best vs worst lap comparison
+* Race engineering insights engine
+* Interactive Streamlit dashboard
+
+⸻
+
+🏁 Motorsport Context
+
+The analytics approach is inspired by real-world race engineering workflows used in professional motorsport, including systems similar in concept to those used by Mercedes-AMG Petronas Formula One Team.
+
+⸻
+
+🧰 Tech Stack
+
+* Python
+* Pandas
+* Streamlit
+* Boto3 (AWS SDK)
+* Matplotlib
+
+⸻
+
+📁 Project Structure
+
+racing-telemetry-project/
+│
+├── app.py                  # Streamlit dashboard
+├── cloud_test.py          # AWS / data debugging script
+├── requirements.txt       # Dependencies
+├── README.md              # Documentation
+│
+├── src/
+│   ├── data_loader.py     # AWS S3 data ingestion
+│   ├── analysis.py        # Lap analysis & scoring
+│   └── insights.py        # Engineering insights
+│
+└── data/                  # Optional local dataset
+
+▶️ How to Run
+
+Install dependencies
+
+pip install -r requirements.txt
+
+Run Dashboard
+
+streamlit run app.py
+
+⸻
+
+☁️ AWS Setup
+
+This project uses Amazon Web Services S3 for storing and loading telemetry data.
+
+To run this project locally, you will need to set up your own S3 bucket and upload the dataset.
+
+⸻
+
+📦 1. Create an S3 Bucket
+
+Create a bucket in AWS S3:
+
+* Name: any name you choose (e.g. your-telemetry-bucket)
+* Region: your preferred region
+
+Upload your telemetry CSV file into the bucket.
+
+⸻
+
+📄 2. Upload Dataset
+
+Upload a file with the same structure as the project expects, for example:
+AMGGT3-BRANDSHATCH.csv
+
+Make sure it contains telemetry columns such as:
+
+* rpm
+* throttle
+* brake
+* lapNum
+
+⸻
+
+🔐 3. Configure AWS Credentials
+
+Before running the project, configure your AWS credentials locally:
+
+aws configure
+
+You will be prompted for:
+
+* AWS Access Key ID
+* AWS Secret Access Key
+* Default region name
+* Output format
+
+These credentials must belong to an IAM user with permission to access S3.
+
+⸻
+
+🛡️ 4. Required IAM Permissions
+
+Ensure your IAM user has at least:
+
+* s3:GetObject
+* s3:ListBucket
+
+⸻
+
+⚙️ 5. Update Project Configuration
+
+In app.py and cloud_test.py, set:
+
+BUCKET_NAME = "your-bucket-name"
+FILE_NAME = "your-file-name.csv" example: (AMGGT3-BRANDSHATCH.csv)
+
