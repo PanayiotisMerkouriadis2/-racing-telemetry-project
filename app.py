@@ -12,10 +12,12 @@ st.set_page_config(
 )
 
 st.title("🏎️ Racing Telemetry Analytics Platform")
-st.caption("Cloud-based motorsport telemetry system powered by AWS S3")
+st.caption("High-performance cloud-based motorsport analytics system")
+
+st.set_option("client.showErrorDetails", False)
 
 # =====================================================
-# AWS CONNECTION (STREAMLIT SECRETS)
+# AWS CONFIG (STREAMLIT SECRETS)
 # =====================================================
 
 AWS_ACCESS_KEY_ID = st.secrets["AWS_ACCESS_KEY_ID"]
@@ -26,10 +28,10 @@ BUCKET_NAME = "racing-telemetry-pany-01"
 FILE_NAME = "AMGGT3-BRANDSHATCH.csv"
 
 # =====================================================
-# LOAD DATA FROM S3
+# FAST DATA LOADER (CACHED)
 # =====================================================
 
-@st.cache_data
+@st.cache_data(ttl=3600)
 def load_data():
     s3 = boto3.client(
         "s3",
@@ -41,24 +43,41 @@ def load_data():
     obj = s3.get_object(Bucket=BUCKET_NAME, Key=FILE_NAME)
     df = pd.read_csv(obj["Body"])
 
+    # clean once
+    for col in ["rpm", "throttle", "brake", "lapNum"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df = df.dropna(subset=["rpm", "throttle", "brake", "lapNum"])
+
+    # precompute
+    rpm_max = df["rpm"].max()
+    df["rpm_norm"] = df["rpm"] / rpm_max if rpm_max != 0 else 0
+
     return df
 
 df = load_data()
 
 # =====================================================
-# CLEANING
+# FAST LAP SUMMARY (CACHED)
 # =====================================================
 
-required_cols = ["rpm", "throttle", "brake", "lapNum"]
+@st.cache_data
+def compute_lap_summary(df):
+    summary = df.groupby("lapNum").agg({
+        "rpm": "mean",
+        "throttle": "mean",
+        "brake": "mean"
+    }).reset_index()
 
-for col in required_cols:
-    df[col] = pd.to_numeric(df[col], errors="coerce")
+    summary["score"] = (
+        summary["rpm"] * 0.4 +
+        summary["throttle"] * 100 * 0.4 -
+        summary["brake"] * 100 * 0.2
+    )
 
-df = df.dropna(subset=required_cols)
+    return summary
 
-# Prevent divide-by-zero crash
-rpm_max = df["rpm"].max()
-df["rpm_norm"] = df["rpm"] / rpm_max if rpm_max != 0 else 0
+lap_summary = compute_lap_summary(df)
 
 # =====================================================
 # SIDEBAR STATUS
@@ -66,7 +85,7 @@ df["rpm_norm"] = df["rpm"] / rpm_max if rpm_max != 0 else 0
 
 st.sidebar.title("System Status")
 st.sidebar.success("✔ AWS Connected")
-st.sidebar.success("✔ Data Loaded")
+st.sidebar.success("✔ Data Cached")
 st.sidebar.success("✔ Dashboard Running")
 
 # =====================================================
@@ -75,13 +94,9 @@ st.sidebar.success("✔ Dashboard Running")
 
 lap_list = sorted(df["lapNum"].unique())
 
-selected_lap = st.selectbox(
-    "Select Lap",
-    lap_list,
-    key="lap_select_main"
-)
+selected_lap = st.selectbox("Select Lap", lap_list, key="main_lap")
 
-lap_data = df[df["lapNum"] == selected_lap].reset_index(drop=True)
+lap_data = df[df["lapNum"] == selected_lap]
 
 # =====================================================
 # TELEMETRY VIEW
@@ -91,17 +106,12 @@ st.subheader(f"📊 Lap {selected_lap} Telemetry")
 
 col1, col2, col3 = st.columns(3)
 
-with col1:
-    st.line_chart(lap_data["rpm_norm"])
-
-with col2:
-    st.line_chart(lap_data["throttle"])
-
-with col3:
-    st.line_chart(lap_data["brake"])
+col1.line_chart(lap_data["rpm_norm"])
+col2.line_chart(lap_data["throttle"])
+col3.line_chart(lap_data["brake"])
 
 # =====================================================
-# LAP COMPARISON (SAFE VERSION)
+# LAP COMPARISON (SAFE + FAST)
 # =====================================================
 
 st.subheader("🔁 Lap Comparison")
@@ -111,8 +121,8 @@ if len(lap_list) >= 2:
     lap1 = st.selectbox("Lap 1", lap_list, index=0, key="lap1")
     lap2 = st.selectbox("Lap 2", lap_list, index=1, key="lap2")
 
-    l1 = df[df["lapNum"] == lap1].reset_index(drop=True)
-    l2 = df[df["lapNum"] == lap2].reset_index(drop=True)
+    l1 = df[df["lapNum"] == lap1]
+    l2 = df[df["lapNum"] == lap2]
 
     st.write("RPM Comparison")
     st.line_chart({
@@ -136,22 +146,10 @@ else:
     st.info("Not enough laps for comparison.")
 
 # =====================================================
-# RACE ENGINEER INSIGHTS
+# ENGINEER INSIGHTS (FAST)
 # =====================================================
 
 st.subheader("🏁 Race Engineer Insights")
-
-lap_summary = df.groupby("lapNum").agg({
-    "rpm": "mean",
-    "throttle": "mean",
-    "brake": "mean"
-}).reset_index()
-
-lap_summary["score"] = (
-    lap_summary["rpm"] * 0.4 +
-    lap_summary["throttle"] * 100 * 0.4 -
-    lap_summary["brake"] * 100 * 0.2
-)
 
 best_lap = lap_summary.loc[lap_summary["score"].idxmax(), "lapNum"]
 worst_lap = lap_summary.loc[lap_summary["score"].idxmin(), "lapNum"]
@@ -163,10 +161,10 @@ avg_brake = df["brake"].mean()
 avg_throttle = df["throttle"].mean()
 
 if avg_brake > 0.4:
-    st.warning("High braking detected (possible over-braking)")
+    st.warning("High braking detected — possible time loss")
 
 if avg_throttle < 0.6:
-    st.warning("Low throttle usage (weak acceleration zones)")
+    st.warning("Low throttle usage — weak acceleration")
 
 if avg_throttle > 0.85:
     st.success("Strong throttle performance detected")
