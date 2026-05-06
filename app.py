@@ -122,7 +122,7 @@ with tab1:
     annotations = []
     for c_start, c_end, name in corners_meta:
         mid_dist = (c_start + c_end) / 2
-        closest = map_data.iloc[(map_data["dist"] - mid_dist).abs().argsort()[:1]]
+        closest = map_data.iloc[(map_data["dist"] - mid_dist).abs().idxmin()]
         annotations.append(dict(
             x=float(closest["x"]),
             y=float(closest["y"]),
@@ -149,7 +149,7 @@ with tab1:
 
     for s_start, s_end, name in straights_meta:
         mid_dist = (s_start + s_end) / 2
-        closest = map_data.iloc[(map_data["dist"] - mid_dist).abs().argsort()[:1]]
+        closest = map_data.iloc[(map_data["dist"] - mid_dist).abs().idxmin()]
         annotations.append(dict(
             x=float(closest["x"]),
             y=float(closest["y"]),
