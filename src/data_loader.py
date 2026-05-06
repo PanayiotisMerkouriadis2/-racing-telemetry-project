@@ -20,7 +20,7 @@ def load_data():
     # S3 CONFIG
     # =================================================
     BUCKET_NAME = "racing-telemetry-pany-01"
-    FILE_NAME = "AMGGT3-BRANDSHATCH.csv"
+    FILE_NAME = "amg_gt3_brands.parquet"
 
     # =================================================
     # CONNECT TO AWS S3
