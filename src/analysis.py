@@ -2,7 +2,24 @@ import pandas as pd
 import numpy as np
 
 # =====================================================
-# INDEX BUILDER
+# DATA PREP
+# =====================================================
+
+def prepare_data(df):
+    df = df.copy()
+
+    # Create distance if not exists
+    if "dist" not in df.columns:
+        df["dist"] = df.groupby("lapNum").cumcount()
+
+    # Create segments (~100 points per segment)
+    df["segment"] = (df["dist"] // 100).astype(int)
+
+    return df
+
+
+# =====================================================
+# INDEX BUILDER (KEEP YOUR SYSTEM)
 # =====================================================
 
 def build_indexes(df):
@@ -33,62 +50,91 @@ def build_indexes(df):
 
 
 # =====================================================
-# LAP ACCESS
+# BEST LAP (ENGINE LEVEL)
 # =====================================================
 
-def get_lap_data(indexes, lap_num):
-    return indexes["lap_index"][lap_num]
-
-
-# =====================================================
-# BEST / WORST LAP
-# =====================================================
-
-def get_best_worst(summary):
-    best = summary.loc[summary["score"].idxmax()]
-    worst = summary.loc[summary["score"].idxmin()]
-    return best, worst
+def get_best_lap(df):
+    lap_times = df.groupby("lapNum")["time"].max()
+    return lap_times.idxmin()
 
 
 # =====================================================
-# DELTA ANALYSIS
+# SEGMENT DELTA (CRITICAL)
 # =====================================================
 
-def compute_delta_to_best(df):
+def compute_segment_delta(df):
 
-    lap_avg = df.groupby("lapNum")["rpm"].mean()
-    best = lap_avg.max()
+    seg = df.groupby(["lapNum", "segment"])["speed"].mean().reset_index()
 
-    return (lap_avg - best).reset_index(name="delta_rpm")
+    best_lap = get_best_lap(df)
+    ref = seg[seg["lapNum"] == best_lap]
 
+    merged = seg.merge(ref, on="segment", suffixes=("", "_ref"))
 
-# =====================================================
-# SECTOR ANALYSIS
-# =====================================================
+    merged["delta"] = merged["speed_ref"] - merged["speed"]
 
-def compute_sector_summary(df):
-
-    df = df.copy()
-    df["sector"] = df.groupby("lapNum").cumcount() // 3 + 1
-
-    return df.groupby(["lapNum", "sector"]).agg({
-        "rpm": "mean",
-        "throttle": "mean",
-        "brake": "mean"
-    }).reset_index()
+    return merged
 
 
 # =====================================================
-# CORNER DETECTION
+# FIND TIME LOSS
 # =====================================================
 
-def detect_corners(df):
-    df = df.copy()
-    return df[df["brake"] > 0.3]
+def find_time_loss(delta_df):
+
+    losses = delta_df.groupby("segment")["delta"].mean()
+
+    return losses.sort_values(ascending=False).head(5)
 
 
 # =====================================================
-# DRIVER STYLE
+# DIAGNOSIS ENGINE (THIS IS WHAT MATTERS)
+# =====================================================
+
+def diagnose_segment(df, segment):
+
+    seg = df[df["segment"] == segment]
+
+    brake = seg["brake"].mean()
+    throttle = seg["throttle"].mean()
+    speed = seg["speed"].mean()
+
+    if brake > 0.4:
+        return "Over-braking → braking too early or too hard"
+    elif throttle < 0.5:
+        return "Poor throttle application → late on power"
+    else:
+        return "Low minimum speed → slow corner entry"
+
+
+# =====================================================
+# FULL ENGINE REPORT
+# =====================================================
+
+def generate_engine_report(df):
+
+    df = prepare_data(df)
+
+    delta_df = compute_segment_delta(df)
+    losses = find_time_loss(delta_df)
+
+    report = []
+
+    for seg, val in losses.items():
+
+        reason = diagnose_segment(df, seg)
+
+        report.append({
+            "segment": int(seg),
+            "time_loss": round(val, 3),
+            "reason": reason
+        })
+
+    return report
+
+
+# =====================================================
+# DRIVER STYLE (KEEP YOUR VERSION)
 # =====================================================
 
 def classify_driver_style(df):
