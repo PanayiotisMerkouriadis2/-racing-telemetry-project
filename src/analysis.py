@@ -1,189 +1,104 @@
-import streamlit as st
-
-from src.data_loader import load_data
-from src.analysis import (
-    build_indexes,
-    get_lap_data,
-    get_best_worst,
-    compute_delta_to_best,
-    compute_sector_summary,
-    detect_corners,
-    classify_driver_style
-)
+import pandas as pd
+import numpy as np
 
 # =====================================================
-# PAGE CONFIG (FAST + CLEAN UI)
+# INDEX BUILDER
 # =====================================================
 
-st.set_page_config(
-    page_title="F1 Telemetry Engine",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+def build_indexes(df):
 
-st.title("🏎️ F1-Style Telemetry Analytics Engine")
-st.caption("Cloud-based motorsport engineering dashboard")
+    df = df.copy()
 
-# =====================================================
-# LOAD DATA (CACHED FROM S3 / PARQUET)
-# =====================================================
+    lap_index = {
+        lap: group.reset_index(drop=True)
+        for lap, group in df.groupby("lapNum")
+    }
 
-df = load_data()
+    summary = df.groupby("lapNum").agg({
+        "rpm": "mean",
+        "throttle": "mean",
+        "brake": "mean"
+    }).reset_index()
 
-# =====================================================
-# BUILD INDEXES (RUNS ONCE ONLY)
-# =====================================================
+    summary["score"] = (
+        summary["rpm"] * 0.4 +
+        summary["throttle"] * 100 * 0.4 -
+        summary["brake"] * 100 * 0.2
+    )
 
-indexes = build_indexes(df)
+    return {
+        "lap_index": lap_index,
+        "summary": summary
+    }
 
-lap_index = indexes["lap_index"]
-summary = indexes["summary"]
-
-# =====================================================
-# SIDEBAR CONTROLS
-# =====================================================
-
-st.sidebar.title("Controls")
-
-lap_list = sorted(lap_index.keys())
-selected_lap = st.sidebar.selectbox("Select Lap", lap_list)
 
 # =====================================================
-# GET LAP DATA (FAST LOOKUP)
+# LAP ACCESS
 # =====================================================
 
-lap_data = get_lap_data(indexes, selected_lap)
+def get_lap_data(indexes, lap_num):
+    return indexes["lap_index"][lap_num]
+
 
 # =====================================================
-# ================= DASHBOARD =================
+# BEST / WORST LAP
 # =====================================================
 
-st.subheader("📊 Telemetry Dashboard")
+def get_best_worst(summary):
+    best = summary.loc[summary["score"].idxmax()]
+    worst = summary.loc[summary["score"].idxmin()]
+    return best, worst
 
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.markdown("### RPM")
-    st.line_chart(lap_data["rpm"])
-
-with col2:
-    st.markdown("### Throttle")
-    st.line_chart(lap_data["throttle"])
-
-with col3:
-    st.markdown("### Brake")
-    st.line_chart(lap_data["brake"])
 
 # =====================================================
-# LAP SUMMARY TABLE
+# DELTA ANALYSIS
 # =====================================================
 
-st.subheader("🏁 Lap Performance Summary")
+def compute_delta_to_best(df):
 
-st.dataframe(summary, use_container_width=True)
+    lap_avg = df.groupby("lapNum")["rpm"].mean()
+    best = lap_avg.max()
 
-best, worst = get_best_worst(summary)
+    return (lap_avg - best).reset_index(name="delta_rpm")
 
-col1, col2 = st.columns(2)
-
-with col1:
-    st.success(f"🏆 Best Lap: {int(best['lapNum'])}")
-
-with col2:
-    st.warning(f"⚠️ Worst Lap: {int(worst['lapNum'])}")
 
 # =====================================================
-# LAP COMPARISON
+# SECTOR ANALYSIS
 # =====================================================
 
-st.subheader("🔁 Lap Comparison")
+def compute_sector_summary(df):
 
-if len(lap_list) >= 2:
+    df = df.copy()
+    df["sector"] = df.groupby("lapNum").cumcount() // 3 + 1
 
-    lap_a = st.selectbox("Lap A", lap_list, index=0, key="a")
-    lap_b = st.selectbox("Lap B", lap_list, index=1, key="b")
+    return df.groupby(["lapNum", "sector"]).agg({
+        "rpm": "mean",
+        "throttle": "mean",
+        "brake": "mean"
+    }).reset_index()
 
-    a = get_lap_data(indexes, lap_a)
-    b = get_lap_data(indexes, lap_b)
-
-    st.write("RPM Comparison")
-    st.line_chart({
-        f"Lap {lap_a}": a["rpm"],
-        f"Lap {lap_b}": b["rpm"]
-    })
-
-    st.write("Throttle Comparison")
-    st.line_chart({
-        f"Lap {lap_a}": a["throttle"],
-        f"Lap {lap_b}": b["throttle"]
-    })
-
-    st.write("Brake Comparison")
-    st.line_chart({
-        f"Lap {lap_a}": a["brake"],
-        f"Lap {lap_b}": b["brake"]
-    })
-
-# =====================================================
-# DELTA ANALYSIS (F1 FEATURE)
-# =====================================================
-
-st.subheader("⏱ Delta vs Best Lap")
-
-delta_df = compute_delta_to_best(df)
-
-st.line_chart(delta_df.set_index("lapNum"))
-
-# =====================================================
-# SECTOR ANALYSIS (F1 FEATURE)
-# =====================================================
-
-st.subheader("🏁 Sector Performance")
-
-sector_df = compute_sector_summary(df)
-
-st.dataframe(
-    sector_df[sector_df["lapNum"] == selected_lap],
-    use_container_width=True
-)
 
 # =====================================================
 # CORNER DETECTION
 # =====================================================
 
-st.subheader("🧭 Corner Detection")
+def detect_corners(df):
+    df = df.copy()
+    return df[df["brake"] > 0.3]
 
-corners = detect_corners(df[df["lapNum"] == selected_lap])
-
-st.dataframe(corners[["rpm", "throttle", "brake"]])
-
-# =====================================================
-# DRIVER STYLE CLASSIFICATION
-# =====================================================
-
-st.subheader("🧠 Driver Style")
-
-style = classify_driver_style(df[df["lapNum"] == selected_lap])
-
-st.success(f"Style: {style}")
 
 # =====================================================
-# ENGINEER INSIGHTS
+# DRIVER STYLE
 # =====================================================
 
-st.subheader("📈 Engineer Insights")
+def classify_driver_style(df):
 
-avg_brake = df["brake"].mean()
-avg_throttle = df["throttle"].mean()
+    avg_throttle = df["throttle"].mean()
+    avg_brake = df["brake"].mean()
 
-if avg_brake > 0.4:
-    st.warning("⚠️ High braking detected (time loss risk)")
-
-if avg_throttle < 0.6:
-    st.warning("⚠️ Low throttle usage (poor acceleration zones)")
-
-if avg_throttle > 0.85:
-    st.success("🔥 Aggressive throttle usage detected")
-
-if 0.6 <= avg_throttle <= 0.85 and avg_brake <= 0.4:
-    st.success("✅ Balanced driving style")
+    if avg_throttle > 0.85 and avg_brake < 0.3:
+        return "Aggressive 🟥"
+    elif avg_throttle < 0.6:
+        return "Conservative 🟦"
+    else:
+        return "Balanced 🟩"
