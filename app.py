@@ -1,5 +1,4 @@
 import streamlit as st
-import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 from src.data_loader import load_data
@@ -16,6 +15,13 @@ from src.analysis import (
 st.set_page_config(page_title="Race Engineering Dashboard", layout="wide")
 st.title("🏎️ Race Engineering Platform")
 st.caption("AMG GT3 · Brands Hatch GP · Telemetry Analysis")
+
+
+def fmt_laptime(seconds: float) -> str:
+    """Convert raw seconds to M:SS.mmm display string."""
+    m = int(seconds // 60)
+    s = seconds % 60
+    return f"{m}:{s:06.3f}"
 
 
 @st.cache_data(show_spinner="Loading telemetry from AWS S3...")
@@ -51,9 +57,9 @@ st.sidebar.divider()
 best, worst = get_best_worst(summary)
 st.sidebar.subheader("Session Overview")
 st.sidebar.metric("🏆 Best Lap", f"Lap {int(best['lapNum'])}",
-                  f"{best['lap_time']:.2f}s")
+                  fmt_laptime(best['lap_time']))
 st.sidebar.metric("⚠️ Worst Lap", f"Lap {int(worst['lapNum'])}",
-                  f"{worst['lap_time']:.2f}s")
+                  fmt_laptime(worst['lap_time']))
 
 # =====================================================
 # TABS
@@ -66,7 +72,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
 # TAB 1 — TRACK MAP
 # =====================================================
 with tab1:
-    st.subheader("🗺️ Brands Hatch — Track Map")
+    st.subheader("🗺️ Brands Hatch GP — Track Map")
 
     map_col1, map_col2 = st.columns([3, 1])
 
@@ -88,7 +94,6 @@ with tab1:
 
     fig_map = go.Figure()
 
-    # Track line coloured by chosen channel
     fig_map.add_trace(go.Scatter(
         x=map_data["x"],
         y=map_data["y"],
@@ -108,18 +113,34 @@ with tab1:
         name="Track",
     ))
 
-    # Corner label annotations
+    # ── Brands Hatch GP — corners in lap order ────────────────────────────
     corners_meta = [
-        (200,  420,  "Paddock Hill Bend"),
-        (700,  900,  "Druids"),
-        (1200, 1450, "Graham Hill Bend"),
-        (1800, 2050, "Surtees"),
-        (2400, 2650, "Hawthorn"),
-        (3000, 3250, "Westfield"),
-        (3400, 3650, "Clearways"),
+        (0,    200,  "Paddock Hill Bend"),
+        (500,  650,  "Druids"),
+        (750,  900,  "Graham Hill Bend"),
+        (1050, 1200, "Surtees"),
+        (1300, 1450, "Pilgrim's Drop"),
+        (1550, 1700, "Stirling's"),
+        (1900, 2050, "Clearways"),
+        (2100, 2250, "Clark Curve"),
+        (2400, 2600, "Dingle Dell Corner"),
+        (2700, 2900, "Westfield Bend"),
+        (3000, 3200, "Dingle Dell"),
+        (3300, 3500, "Hawthorn Bend"),
+    ]
+
+    # ── Brands Hatch GP — straights in lap order ──────────────────────────
+    straights_meta = [
+        (200,  500,  "Pilgrim's Rise"),
+        (650,  750,  "Cooper Straight"),
+        (900,  1050, "Bottom Straight"),
+        (1200, 1300, "Brabham Straight"),
+        (2250, 2400, "Derek Minter Straight"),
+        (3500, 3800, "Start/Finish Straight"),
     ]
 
     annotations = []
+
     for c_start, c_end, name in corners_meta:
         mid_dist = (c_start + c_end) / 2
         closest = map_data.iloc[(map_data["dist"] - mid_dist).abs().idxmin()]
@@ -138,14 +159,6 @@ with tab1:
             bordercolor="#555",
             borderwidth=1,
         ))
-
-    # Straight label annotations
-    straights_meta = [
-        (0,    200,  "S/F Straight"),
-        (420,  700,  "Cooper Straight"),
-        (900,  1200, "Bottom Straight"),
-        (1450, 1800, "Brabham Straight"),
-    ]
 
     for s_start, s_end, name in straights_meta:
         mid_dist = (s_start + s_end) / 2
@@ -249,8 +262,13 @@ with tab4:
     display_cols = ["lapNum", "lap_time", "max_speed", "avg_speed",
                     "avg_gear", "throttle", "brake", "lat_accel", "score"]
     display_cols = [c for c in display_cols if c in summary.columns]
+
+    summary_display = summary[display_cols].copy()
+    if "lap_time" in summary_display.columns:
+        summary_display["lap_time"] = summary_display["lap_time"].apply(fmt_laptime)
+
     st.dataframe(
-        summary[display_cols].round(3),
+        summary_display,
         use_container_width=True,
         hide_index=True,
     )
