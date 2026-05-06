@@ -16,20 +16,23 @@ def build_indexes(df):
         lap: group.reset_index(drop=True)
         for lap, group in df.groupby("lapNum")
     }
-    summary = df.groupby("lapNum").agg({
-        "rpm": "mean",
-        "throttle": "mean",
-        "brake": "mean"
-    }).reset_index()
+    summary = df.groupby("lapNum").agg(
+        rpm=("rpm", "mean"),
+        throttle=("throttle", "mean"),
+        brake=("brake", "mean"),
+        max_speed=("speed", "max"),
+        avg_speed=("speed", "mean"),
+        avg_gear=("gear", "mean"),
+        lat_accel=("lat_accel", lambda x: x.abs().mean()),
+        long_accel=("long_accel", lambda x: x.abs().mean()),
+        lap_time=("time", "max"),
+    ).reset_index()
     summary["score"] = (
         summary["rpm"] * 0.4 +
         summary["throttle"] * 100 * 0.4 -
         summary["brake"] * 100 * 0.2
     )
-    return {
-        "lap_index": lap_index,
-        "summary": summary
-    }
+    return {"lap_index": lap_index, "summary": summary}
 
 
 def get_lap_data(indexes, lap_num):
@@ -83,7 +86,7 @@ def generate_engine_report(df):
         report.append({
             "segment": int(seg),
             "time_loss": round(val, 3),
-            "reason": reason
+            "reason": reason,
         })
     return report
 
@@ -97,3 +100,12 @@ def classify_driver_style(df):
         return "Conservative 🟦"
     else:
         return "Balanced 🟩"
+
+
+def get_track_map_data(df):
+    """Return averaged x/y per dist point with speed/brake/throttle for colouring."""
+    return (
+        df.groupby("dist")[["x", "y", "speed", "brake", "throttle", "zone", "zone_name"]]
+        .mean(numeric_only=False)
+        .reset_index()
+    )
