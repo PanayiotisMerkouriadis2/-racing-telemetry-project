@@ -19,24 +19,30 @@ st.set_page_config(
 )
 
 st.title("🏎️ Race Engineering Platform")
-st.caption("Telemetry-driven performance analysis")
+st.caption("Telemetry-driven GT3 performance analysis")
 
 # =====================================================
-# LOAD DATA (CACHED)
+# LOAD DATA (CACHED + SAFE)
 # =====================================================
 
-@st.cache_data
+@st.cache_data(show_spinner="Loading telemetry...")
 def load():
     df = load_data()
-    return prepare_data(df)
+    df = prepare_data(df)
+    return df
 
 df = load()
 
 # =====================================================
-# BUILD INDEXES (FAST)
+# BUILD INDEXES (CACHE SAFE)
 # =====================================================
 
-indexes = build_indexes(df)
+@st.cache_data
+def build(df):
+    return build_indexes(df)
+
+indexes = build(df)
+
 lap_index = indexes["lap_index"]
 summary = indexes["summary"]
 
@@ -46,24 +52,27 @@ summary = indexes["summary"]
 
 st.sidebar.title("System Status")
 st.sidebar.success("✔ Data Loaded")
-st.sidebar.success("✔ Engineering Engine Active")
+st.sidebar.success("✔ Analysis Engine Ready")
 
 # =====================================================
-# 🏁 ENGINE REPORT (TOP PRIORITY)
+# 🧠 ENGINE REPORT (TOP LEVEL INSIGHT)
 # =====================================================
 
-st.subheader("🧠 Race Engineer Report")
+st.subheader("🧠 Engineer Report (Time Loss Breakdown)")
 
 report = generate_engine_report(df)
 
-for r in report:
-    st.markdown(
-        f"""
-        **Segment {r['segment']}**  
-        Time Loss: **-{r['time_loss']}s**  
-        Cause: {r['reason']}
-        """
-    )
+if len(report) == 0:
+    st.warning("No issues detected in dataset")
+else:
+    for r in report:
+        st.markdown(
+            f"""
+            **Segment {r['segment']}**  
+            ⏱ Time Loss: **-{r['time_loss']}s**  
+            🧠 Cause: {r['reason']}
+            """
+        )
 
 # =====================================================
 # LAP SELECTION
@@ -75,7 +84,7 @@ selected_lap = st.selectbox("Select Lap", lap_list)
 lap_data = get_lap_data(indexes, selected_lap)
 
 # =====================================================
-# 📊 TELEMETRY (SUPPORTING DATA ONLY)
+# TELEMETRY VIEW (SIMPLIFIED)
 # =====================================================
 
 st.subheader(f"📊 Lap {selected_lap} Telemetry")
@@ -92,7 +101,7 @@ with col3:
     st.line_chart(lap_data["brake"])
 
 # =====================================================
-# 🏁 BEST / WORST LAP
+# BEST / WORST LAP
 # =====================================================
 
 best, worst = get_best_worst(summary)
@@ -106,27 +115,28 @@ with col2:
     st.warning(f"⚠️ Worst Lap: {int(worst['lapNum'])}")
 
 # =====================================================
-# 🔁 LAP COMPARISON (ENGINE RELEVANT)
+# LAP COMPARISON
 # =====================================================
 
 st.subheader("🔁 Lap Comparison")
 
 if len(lap_list) >= 2:
 
-    lap_a = st.selectbox("Lap A", lap_list, index=0)
-    lap_b = st.selectbox("Lap B", lap_list, index=1)
+    lap_a = st.selectbox("Lap A", lap_list, index=0, key="a")
+    lap_b = st.selectbox("Lap B", lap_list, index=1, key="b")
 
     a = get_lap_data(indexes, lap_a)
     b = get_lap_data(indexes, lap_b)
 
     st.write("Speed Comparison")
+
     st.line_chart({
         f"Lap {lap_a}": a["speed"],
         f"Lap {lap_b}": b["speed"]
     })
 
 # =====================================================
-# 📊 SUMMARY TABLE
+# SUMMARY
 # =====================================================
 
 st.subheader("📊 Lap Summary")
