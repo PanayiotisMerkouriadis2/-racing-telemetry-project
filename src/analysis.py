@@ -103,9 +103,14 @@ def classify_driver_style(df):
 
 
 def get_track_map_data(df):
-    """Return averaged x/y per dist point with speed/brake/throttle for colouring."""
-    return (
-        df.groupby("dist")[["x", "y", "speed", "brake", "throttle", "zone", "zone_name"]]
-        .mean(numeric_only=False)
+    numeric = (
+        df.groupby("dist")[["x", "y", "speed", "brake", "throttle"]]
+        .mean()
         .reset_index()
     )
+    labels = (
+        df.groupby("dist")[["zone", "zone_name"]]
+        .first()
+        .reset_index()
+    )
+    return numeric.merge(labels, on="dist")
